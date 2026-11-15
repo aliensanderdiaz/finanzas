@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control de Gastos</title>
+
+<style>
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+}
+
+body{
+    font-family:Arial,sans-serif;
+    background:#f4f6f8;
+    color:#333;
+}
+
+header{
+    position:sticky;
+    top:0;
+    background:white;
+    padding:15px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:1px solid #ddd;
+    z-index:100;
+}
+
+h1{
+    font-size:20px;
+}
+
+.container{
+    padding:15px;
+}
+
+.card{
+    background:white;
+    border-radius:12px;
+    padding:15px;
+    margin-bottom:15px;
+    box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+
+label{
+    display:block;
+    margin-top:12px;
+    margin-bottom:5px;
+    font-size:14px;
+    font-weight:bold;
+}
+
+input,select,textarea{
+    width:100%;
+    padding:12px;
+    border:1px solid #ccc;
+    border-radius:8px;
+    font-size:16px;
+}
+
+textarea{
+    resize:none;
+    height:70px;
+}
+
+button{
+    width:100%;
+    border:none;
+    border-radius:8px;
+    padding:14px;
+    cursor:pointer;
+    font-size:16px;
+    margin-top:15px;
+}
+
+.btn-primary{
+    background:#1565c0;
+    color:white;
+}
+
+.btn-danger{
+    background:#c62828;
+    color:white;
+}
+
+.btn-secondary{
+    background:#666;
+    color:white;
+}
+
+.transaccion{
+    border-bottom:1px solid #eee;
+    padding:10px 0;
+}
+
+.transaccion:last-child{
+    border:none;
+}
+
+.tipo{
+    font-weight:bold;
+}
+
+.gasto{
+    color:#c62828;
+}
+
+.ingreso{
+    color:#2e7d32;
+}
+
+.transferencia{
+    color:#ef6c00;
+}
+
+#configPanel{
+    display:none;
+}
+
+.hidden{
+    display:none;
+}
+
+.gear{
+    background:none;
+    border:none;
+    font-size:24px;
+    width:auto;
+    margin:0;
+}
+
+.account-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+}
+
+.account-row input{
+    flex:1;
+}
+
+.saldo-positivo{
+    color:#2e7d32;
+    font-weight:bold;
+}
+
+.saldo-negativo{
+    color:#c62828;
+    font-weight:bold;
+}
+
+small{
+    color:#666;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>💰 Finanzas</h1>
+    <button class="gear" onclick="toggleConfig()">⚙️</button>
+</header>
+
+<div class="container">
+
+    <div class="card">
+
+        <label>Monto</label>
+        <input type="number" id="monto" step="0.01">
+
+        <label>Detalle</label>
+        <textarea id="detalle"></textarea>
+
+        <label>Tipo</label>
+        <select id="tipo">
+            <option value="gasto">Gasto</option>
+            <option value="ingreso">Ingreso</option>
+            <option value="transferencia">Transferencia</option>
+        </select>
+
+        <div id="cuentaNormal">
+
+            <label>Cuenta</label>
+            <select id="cuenta"></select>
+
+        </div>
+
+        <div id="cuentaTransferencia" class="hidden">
+
+            <label>Desde</label>
+            <select id="desde"></select>
+
+            <label>Hacia</label>
+            <select id="hacia"></select>
+
+        </div>
+
+        <button class="btn-primary" onclick="guardarMovimiento()">
+            Guardar
+        </button>
+
+    </div>
+
+    <div class="card">
+
+        <h3>Últimas 5 transacciones</h3>
+
+        <div id="ultimas"></div>
+
+    </div>
+
+    <div id="configPanel">
+
+        <div class="card">
+
+            <h3>Configuración</h3>
+            <small>Saldos actuales</small>
+
+            <div id="saldos"></div>
+
+            <button class="btn-secondary" onclick="guardarSaldos()">
+                Guardar Saldos
+            </button>
+
+        </div>
+
+        <div class="card">
+
+            <button class="btn-primary" onclick="exportarCSV()">
+                Descargar CSV
+            </button>
+
+            <button class="btn-danger" onclick="borrarTransacciones()">
+                Borrar Transacciones (Arqueo)
+            </button>
+
+            <button class="btn-danger" onclick="reiniciarTodo()">
+                Reiniciar Todo
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const cuentas = [
+"base",
+"moneda",
+"billetera",
+"nutc",
+"nu",
+"claropay",
+"nequi",
+"nequiuva",
+"bancolombia",
+"daviplata",
+"meli"
+];
+
+function cargarDatos(){
+
+    if(!localStorage.getItem("balances")){
+
+        const balances={};
+
+        cuentas.forEach(c=>{
+            balances[c]=0;
+        });
+
+        localStorage.setItem(
+            "balances",
+            JSON.stringify(balances)
+        );
+
+        document.getElementById("configPanel").style.display="block";
+    }
+
+    if(!localStorage.getItem("transactions")){
+        localStorage.setItem("transactions","[]");
+    }
+
+}
+
+function obtenerBalances(){
+    return JSON.parse(
+        localStorage.getItem("balances")
+    );
+}
+
+function guardarBalances(b){
+    localStorage.setItem(
+        "balances",
+        JSON.stringify(b)
+    );
+}
+
+function obtenerTransacciones(){
+    return JSON.parse(
+        localStorage.getItem("transactions")
+    );
+}
+
+function guardarTransacciones(t){
+    localStorage.setItem(
+        "transactions",
+        JSON.stringify(t)
+    );
+}
+
+function llenarSelects(){
+
+    const cuenta=document.getElementById("cuenta");
+    const desde=document.getElementById("desde");
+    const hacia=document.getElementById("hacia");
+
+    cuenta.innerHTML="";
+    desde.innerHTML="";
+    hacia.innerHTML="";
+
+    cuentas.forEach(c=>{
+
+        cuenta.innerHTML+=`<option>${c}</option>`;
+        desde.innerHTML+=`<option>${c}</option>`;
+        hacia.innerHTML+=`<option>${c}</option>`;
+
+    });
+
+}
+
+function renderConfig(){
+
+    const balances=obtenerBalances();
+
+    let html="";
+
+    cuentas.forEach(c=>{
+
+        let clase =
+            balances[c] >= 0
+            ? "saldo-positivo"
+            : "saldo-negativo";
+
+        html+=`
+        <div class="account-row">
+            <label style="width:120px">${c}</label>
+            <input
+                type="number"
+                id="saldo_${c}"
+                value="${balances[c]}"
+            >
+            <span class="${clase}">
+                ${balances[c].toLocaleString()}
+            </span>
+        </div>
+        `;
+    });
+
+    document.getElementById("saldos").innerHTML=html;
+}
+
+function guardarSaldos(){
+
+    const balances={};
+
+    cuentas.forEach(c=>{
+
+        balances[c]=Number(
+            document.getElementById(
+                "saldo_"+c
+            ).value||0
+        );
+
+    });
+
+    guardarBalances(balances);
+
+    alert("Saldos guardados");
+    renderConfig();
+
+}
+
+function guardarMovimiento(){
+
+    const monto=Number(
+        document.getElementById("monto").value
+    );
+
+    if(monto<=0){
+        alert("Monto inválido");
+        return;
+    }
+
+    const detalle=
+        document.getElementById("detalle").value;
+
+    const tipo=
+        document.getElementById("tipo").value;
+
+    const balances=obtenerBalances();
+    const transacciones=obtenerTransacciones();
+
+    const fecha=new Date().toISOString();
+
+    if(tipo==="gasto"){
+
+        const cuenta=
+            document.getElementById("cuenta").value;
+
+        balances[cuenta]-=monto;
+
+        transacciones.unshift({
+            fecha,
+            tipo,
+            monto,
+            cuenta,
+            detalle
+        });
+
+    }
+
+    if(tipo==="ingreso"){
+
+        const cuenta=
+            document.getElementById("cuenta").value;
+
+        balances[cuenta]+=monto;
+
+        transacciones.unshift({
+            fecha,
+            tipo,
+            monto,
+            cuenta,
+            detalle
+        });
+
+    }
+
+    if(tipo==="transferencia"){
+
+        const desde=
+            document.getElementById("desde").value;
+
+        const hacia=
+            document.getElementById("hacia").value;
+
+        if(desde===hacia){
+            alert("Seleccione cuentas diferentes");
+            return;
+        }
+
+        balances[desde]-=monto;
+        balances[hacia]+=monto;
+
+        transacciones.unshift({
+            fecha,
+            tipo,
+            monto,
+            desde,
+            hacia,
+            detalle
+        });
+
+    }
+
+    guardarBalances(balances);
+    guardarTransacciones(transacciones);
+
+    document.getElementById("monto").value="";
+    document.getElementById("detalle").value="";
+
+    renderUltimas();
+    renderConfig();
+
+}
+
+function renderUltimas(){
+
+    const t=obtenerTransacciones()
+        .slice(0,5);
+
+    let html="";
+
+    t.forEach(x=>{
+
+        const fecha=
+            new Date(x.fecha)
+            .toLocaleString();
+
+        if(x.tipo==="transferencia"){
+
+            html+=`
+            <div class="transaccion">
+                <div class="tipo transferencia">
+                Transferencia
+                </div>
+
+                <div>
+                ${x.desde} → ${x.hacia}
+                </div>
+
+                <div>
+                $${x.monto.toLocaleString()}
+                </div>
+
+                <div>${x.detalle}</div>
+
+                <small>${fecha}</small>
+            </div>
+            `;
+
+        }else{
+
+            html+=`
+            <div class="transaccion">
+                <div class="tipo ${x.tipo}">
+                ${x.tipo}
+                </div>
+
+                <div>${x.cuenta}</div>
+
+                <div>
+                $${x.monto.toLocaleString()}
+                </div>
+
+                <div>${x.detalle}</div>
+
+                <small>${fecha}</small>
+            </div>
+            `;
+        }
+
+    });
+
+    document.getElementById("ultimas").innerHTML=html;
+
+}
+
+function borrarTransacciones(){
+
+    if(
+        !confirm("¿Borrar todas las transacciones?")
+    ) return;
+
+    guardarTransacciones([]);
+
+    renderUltimas();
+
+}
+
+function reiniciarTodo(){
+
+    if(
+        !confirm("¿Reiniciar saldos y movimientos?")
+    ) return;
+
+    const balances={};
+
+    cuentas.forEach(c=>{
+        balances[c]=0;
+    });
+
+    guardarBalances(balances);
+    guardarTransacciones([]);
+
+    renderConfig();
+    renderUltimas();
+
+}
+
+function exportarCSV(){
+
+    const t=obtenerTransacciones();
+
+    let csv=
+"fecha,tipo,cuenta,desde,hacia,monto,detalle\n";
+
+    t.forEach(x=>{
+
+        csv+=`"${x.fecha}","${x.tipo}","${x.cuenta||""}","${x.desde||""}","${x.hacia||""}","${x.monto}","${(x.detalle||"").replace(/"/g,"'")}"\n`;
+
+    });
+
+    const blob=new Blob(
+        ["\uFEFF"+csv],
+        {type:"text/csv;charset=utf-8;"}
+    );
+
+    const url=
+        URL.createObjectURL(blob);
+
+    const a=
+        document.createElement("a");
+
+    a.href=url;
+    a.download="transacciones.csv";
+    a.click();
+
+}
+
+function toggleConfig(){
+
+    const panel=
+        document.getElementById("configPanel");
+
+    panel.style.display =
+        panel.style.display==="block"
+        ? "none"
+        : "block";
+
+}
+
+document
+.getElementById("tipo")
+.addEventListener("change",function(){
+
+    const transferencia =
+        this.value==="transferencia";
+
+    document
+    .getElementById("cuentaNormal")
+    .classList.toggle(
+        "hidden",
+        transferencia
+    );
+
+    document
+    .getElementById("cuentaTransferencia")
+    .classList.toggle(
+        "hidden",
+        !transferencia
+    );
+
+});
+
+cargarDatos();
+llenarSelects();
+renderConfig();
+renderUltimas();
+
+</script>
+
+</body>
+</html>
